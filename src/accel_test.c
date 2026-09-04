@@ -27,10 +27,6 @@
 
 static const struct device *const accel_dev = DEVICE_DT_GET(ACCEL_NODE);
 
-/* The driver powers up with both the accelerometer and the gyroscope disabled
- * and channel_get returns -ENODATA until an output data rate has been set, so
- * every channel has to be configured before the first fetch.
- */
 static int enable_channel(const struct shell *sh, enum sensor_channel chan, const char *name)
 {
 	struct sensor_value odr = {.val1 = ODR_HZ, .val2 = 0};

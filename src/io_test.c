@@ -21,16 +21,6 @@
 
 #define SLEEP_TIME_MS 10
 
-/* Addressed through the led0..led3 / button0..button3 devicetree aliases rather
- * than node labels, because the labels are revision-specific: P1 names its LEDs
- * by colour (blue_led, green_led, ...) and its buttons button1..button4, while
- * P2 names them led0..led3 and button0..button3 on entirely different pins.
- * Both revisions provide the aliases, so this file builds unchanged on each.
- *
- * P1 silkscreen mapping, for reference:
- *   led0 = blue, led1 = green, led2 = yellow, led3 = red
- *   button0 = UP, button1 = RIGHT, button2 = LEFT, button3 = DOWN
- */
 static const struct gpio_dt_spec leds[] = {
 	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
 	GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
