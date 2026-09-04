@@ -1,11 +1,12 @@
 /**
- * @file io_test.c
- * @author Gabriel Germano (gabriel.germano@edge.ufal.br)
- * @brief
+ * @file ir_io_test.c
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief IR emitter and receiver bring-up test.
+ *
  * @version 0.1
  * @date 29-01-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
 #include "ir_io_test.h"
@@ -25,10 +26,10 @@
 
 static const struct gpio_dt_spec ir_emitter = GPIO_DT_SPEC_GET(DT_NODELABEL(ir_emitter), gpios);
 static const struct gpio_dt_spec ir_receiver = GPIO_DT_SPEC_GET(DT_NODELABEL(ir_receiver), gpios);
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_NODELABEL(blue_led), gpios);
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
-static const struct gpio_dt_spec button_up = GPIO_DT_SPEC_GET(DT_NODELABEL(button1), gpios);
-static const struct gpio_dt_spec button_down = GPIO_DT_SPEC_GET(DT_NODELABEL(button4), gpios);
+static const struct gpio_dt_spec button_up = GPIO_DT_SPEC_GET(DT_ALIAS(button0), gpios);
+static const struct gpio_dt_spec button_down = GPIO_DT_SPEC_GET(DT_ALIAS(button3), gpios);
 
 static int init_leds(const struct shell *sh)
 {
@@ -155,3 +156,5 @@ int cmd_test_ir_io(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+SHELL_SUBCMD_ADD((test), ir_io, NULL, "Initialize the bringup test for IR IO Module.", cmd_test_ir_io, 1, 0);

@@ -1,3 +1,14 @@
+/**
+ * @file pwm_test.c
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief PWM buzzer bring-up test driven by the potentiometer.
+ *
+ * @version 0.1
+ * @date 29-01-2026
+ *
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
+ *
+ */
 #include "pwm_test.h"
 #include "zephyr/devicetree.h"
 #include "zephyr/shell/shell_fprintf.h"
@@ -113,3 +124,5 @@ int cmd_test_pwm(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+SHELL_SUBCMD_ADD((test), pwm, NULL, "Initialize the bringup test for PWM Module.", cmd_test_pwm, 1, 0);

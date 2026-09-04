@@ -2,7 +2,6 @@
 #define DISPLAY_TEST_H
 
 #include <zephyr/shell/shell.h>
-#include <display.h>
 
 int cmd_test_display(const struct shell *sh, size_t argc, char **argv);
 

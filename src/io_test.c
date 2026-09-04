@@ -1,44 +1,58 @@
 /**
  * @file io_test.c
- * @author Gabriel Germano (gabriel.germano@edge.ufal.br)
- * @brief
- * @version 0.1
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief LED / push-button bring-up test.
+ *
+ * @version 0.2
  * @date 29-01-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
 #include "io_test.h"
 
-#include "zephyr/devicetree.h"
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/ring_buffer.h>
 #include <zephyr/shell/shell.h>
 
 #define SLEEP_TIME_MS 10
 
-static const struct gpio_dt_spec led_red = GPIO_DT_SPEC_GET(DT_NODELABEL(red_led), gpios);
-static const struct gpio_dt_spec led_green = GPIO_DT_SPEC_GET(DT_NODELABEL(green_led), gpios);
-static const struct gpio_dt_spec led_blue = GPIO_DT_SPEC_GET(DT_NODELABEL(blue_led), gpios);
-static const struct gpio_dt_spec led_yellow = GPIO_DT_SPEC_GET(DT_NODELABEL(yellow_led), gpios);
+/* Addressed through the led0..led3 / button0..button3 devicetree aliases rather
+ * than node labels, because the labels are revision-specific: P1 names its LEDs
+ * by colour (blue_led, green_led, ...) and its buttons button1..button4, while
+ * P2 names them led0..led3 and button0..button3 on entirely different pins.
+ * Both revisions provide the aliases, so this file builds unchanged on each.
+ *
+ * P1 silkscreen mapping, for reference:
+ *   led0 = blue, led1 = green, led2 = yellow, led3 = red
+ *   button0 = UP, button1 = RIGHT, button2 = LEFT, button3 = DOWN
+ */
+static const struct gpio_dt_spec leds[] = {
+	GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(led3), gpios),
+};
 
-static const struct gpio_dt_spec button_left = GPIO_DT_SPEC_GET(DT_NODELABEL(button3), gpios);
-static const struct gpio_dt_spec button_right = GPIO_DT_SPEC_GET(DT_NODELABEL(button2), gpios);
-static const struct gpio_dt_spec button_up = GPIO_DT_SPEC_GET(DT_NODELABEL(button1), gpios);
-static const struct gpio_dt_spec button_down = GPIO_DT_SPEC_GET(DT_NODELABEL(button4), gpios);
+static const struct gpio_dt_spec buttons[] = {
+	GPIO_DT_SPEC_GET(DT_ALIAS(button0), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(button1), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(button2), gpios),
+	GPIO_DT_SPEC_GET(DT_ALIAS(button3), gpios),
+};
 
-static const struct gpio_dt_spec leds[] = {led_red, led_green, led_blue, led_yellow};
+static const char *const led_names[] = {"LED0", "LED1", "LED2", "LED3"};
+static const char *const button_names[] = {"BTN0", "BTN1", "BTN2", "BTN3"};
 
-static const struct gpio_dt_spec buttons[] = {button_left, button_right, button_up, button_down};
+BUILD_ASSERT(ARRAY_SIZE(leds) == ARRAY_SIZE(buttons),
+	     "each button toggles the LED at the same index");
 
-static const char *button_names[] = {"LEFT", "RIGHT", "UP", "DOWN"};
-static const char *led_names[] = {"RED", "GREEN", "BLUE", "YELLOW"};
+/* Index of the button that ends the test when held. */
+#define STOP_BUTTON 0
 
 static int init_leds(const struct shell *sh)
 {
@@ -73,7 +87,8 @@ static int init_buttons(const struct shell *sh)
 
 		ret = gpio_pin_configure_dt(&buttons[i], GPIO_INPUT);
 		if (ret < 0) {
-			shell_error(sh, "Failed to configure button %s: %d", button_names[i], ret);
+			shell_error(sh, "Failed to configure button %s: %d", button_names[i],
+				    ret);
 			return ret;
 		}
 	}
@@ -81,6 +96,40 @@ static int init_buttons(const struct shell *sh)
 	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "Buttons initialized\n");
 	return 0;
 }
+
+/* P2 adds a fifth, white LED driven through a low-side MOSFET (active-high,
+ * unlike the four active-low indicator LEDs). P1 has no counterpart.
+ */
+#if DT_NODE_EXISTS(DT_ALIAS(led4))
+static const struct gpio_dt_spec white_led = GPIO_DT_SPEC_GET(DT_ALIAS(led4), gpios);
+
+static int blink_white_led(const struct shell *sh)
+{
+	int ret;
+
+	if (!gpio_is_ready_dt(&white_led)) {
+		shell_error(sh, "White LED device not ready");
+		return -ENODEV;
+	}
+
+	ret = gpio_pin_configure_dt(&white_led, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0) {
+		shell_error(sh, "Failed to configure white LED: %d", ret);
+		return ret;
+	}
+
+	shell_fprintf(sh, SHELL_NORMAL, "Blinking white LED\n");
+
+	for (int i = 0; i < 3; i++) {
+		gpio_pin_set_dt(&white_led, 1);
+		k_msleep(200);
+		gpio_pin_set_dt(&white_led, 0);
+		k_msleep(200);
+	}
+
+	return 0;
+}
+#endif
 
 int cmd_test_io(const struct shell *sh, size_t argc, char **argv)
 {
@@ -101,14 +150,24 @@ int cmd_test_io(const struct shell *sh, size_t argc, char **argv)
 		return ret;
 	}
 
-	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "IO Test started, press any key to stop\n");
-	shell_fprintf(sh, SHELL_NORMAL, "Press buttons to toggle corresponding LEDs\n");
+#if DT_NODE_EXISTS(DT_ALIAS(led4))
+	ret = blink_white_led(sh);
+	if (ret < 0) {
+		return ret;
+	}
+#endif
+
+	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "IO Test started\n");
+	shell_fprintf(sh, SHELL_NORMAL,
+		      "Press a button to toggle the LED of the same index; "
+		      "hold %s for 2 s to stop\n",
+		      button_names[STOP_BUTTON]);
 
 	while (1) {
 		for (size_t i = 0; i < ARRAY_SIZE(buttons); i++) {
 			int current = gpio_pin_get_dt(&buttons[i]);
 
-			/* Detect falling edge (button press if ACTIVE_LOW) */
+			/* Specs are ACTIVE_LOW, so 1 means physically pressed. */
 			if (current == 1 && previous_state[i] == 0) {
 				gpio_pin_toggle_dt(&leds[i]);
 				shell_fprintf(sh, SHELL_NORMAL,
@@ -116,20 +175,18 @@ int cmd_test_io(const struct shell *sh, size_t argc, char **argv)
 					      button_names[i], led_names[i]);
 			}
 
-			previous_state[i] = current;
+			previous_state[i] = (current == 1);
 		}
 
 		k_msleep(SLEEP_TIME_MS);
 
-		/* Stop the test when the button is pressed for 2 seconds btn1 (UP) */
-		if (previous_state[2] == 1 && gpio_pin_get_dt(&buttons[2]) == 1) {
+		if (previous_state[STOP_BUTTON] && gpio_pin_get_dt(&buttons[STOP_BUTTON]) == 1) {
 			k_sleep(K_SECONDS(2));
-			if (gpio_pin_get_dt(&buttons[2]) == 1) {
+			if (gpio_pin_get_dt(&buttons[STOP_BUTTON]) == 1) {
 				shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "\nIO Test stopped\n");
 				break;
 			}
 		}
-
 	}
 
 	for (size_t i = 0; i < ARRAY_SIZE(leds); i++) {
@@ -140,3 +197,6 @@ int cmd_test_io(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+SHELL_SUBCMD_ADD((test), io, NULL, "Initialize the bringup test for IO Module.", cmd_test_io, 1,
+		 0);

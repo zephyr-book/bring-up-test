@@ -1,8 +1,14 @@
 /**
  * @file sd_test.c
- * @brief SD card (SPI) bring-up test
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief SD card (SPI) bring-up test.
+ *
+ * @version 0.1
+ * @date 29-01-2026
+ *
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
+ *
  */
-
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/fs/fs.h>
@@ -183,3 +189,5 @@ int cmd_test_sd(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+SHELL_SUBCMD_ADD((test), sd, NULL, "Initialize the bringup test for SD Card Module.", cmd_test_sd, 1, 0);

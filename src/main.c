@@ -1,101 +1,90 @@
 /**
  * @file main.c
- * @author Gabriel Germano (gabriel.germano@edge.ufal.br)
- * @brief
- * @version 0.1
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief Shell entry point for the ZBook bring-up firmware.
+ *
+ * @version 0.2
  * @date 29-01-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
-
-#include "ldr_test.h"
-#include "io_test.h"
-#include "pwm_test.h"
 #include "addr_led_test.h"
+#include "io_test.h"
 #include "ir_io_test.h"
-#include "sd_test.h"
-#include "display_test.h"
+#include "ldr_test.h"
+#include "pwm_test.h"
+
+/* P2-only tests. The headers always declare their handler; the definition is
+ * compiled only when the matching devicetree node exists, and `test all` guards
+ * each call the same way, so nothing references a missing symbol on P1.
+ */
+#include "accel_test.h"
+#include "encoder_test.h"
+#include "hall_test.h"
+#include "mic_test.h"
+#include "temp_test.h"
 
 #include <stdlib.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
-#include <zephyr/shell/shell_types.h>
 
+SHELL_SUBCMD_SET_CREATE(test_subcmds, (test));
+
+/* `test all` runs the suite in sequence. Unlike the individual subcommands this
+ * has to name every handler from one place, so the revision-specific entries
+ * are bracketed here as well -- these are statements, not macro arguments, so a
+ * plain #if is fine.
+ */
 static int cmd_test_all(const struct shell *sh, size_t argc, char **argv)
 {
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
 	int ret;
 
-	ret = cmd_test_ldr(sh, argc, argv);
-	if (ret < 0) {
-		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "LDR test failed");
-		return ret;
-	}
+#define RUN(_name, _handler)                                                                       \
+	do {                                                                                       \
+		ret = _handler(sh, argc, argv);                                                    \
+		if (ret < 0) {                                                                     \
+			shell_fprintf(sh, SHELL_VT100_COLOR_RED, "%s test failed: %d\n", _name,    \
+				      ret);                                                        \
+			return ret;                                                                \
+		}                                                                                  \
+	} while (0)
 
-	ret = cmd_test_io(sh, argc, argv);
-	if (ret < 0) {
-		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "IO test failed");
-		return ret;
-	}
+	RUN("LDR", cmd_test_ldr);
+	RUN("IO", cmd_test_io);
+	RUN("PWM", cmd_test_pwm);
+	RUN("Addressable LED", cmd_test_addr_led);
+	RUN("IR IO", cmd_test_ir_io);
 
-	ret = cmd_test_pwm(sh, argc, argv);
-	if (ret < 0) {
-		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "PWM test failed");
-		return ret;
-	}
+#if DT_NODE_EXISTS(DT_NODELABEL(tmp1075))
+	RUN("Temperature", cmd_test_temp);
+#endif
+#if DT_NODE_EXISTS(DT_NODELABEL(bmi323))
+	RUN("IMU", cmd_test_accel);
+#endif
+#if DT_NODE_EXISTS(DT_NODELABEL(microphone_adc))
+	RUN("Microphone", cmd_test_mic);
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(hall_sensor))
+	RUN("Hall sensor", cmd_test_hall);
+#endif
+#if DT_NODE_EXISTS(DT_NODELABEL(encoder_qdec))
+	RUN("Encoder", cmd_test_encoder);
+#endif
 
-	ret = cmd_test_addr_led(sh, argc, argv);
-	if (ret < 0) {
-		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "Addressable LED test failed");
-		return ret;
-	}
+#undef RUN
 
-	ret = cmd_test_ir_io(sh, argc, argv);
-	if (ret < 0) {
-		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "IR IO test failed");
-		return ret;
-	}
-
-	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "All tests passed successfully.");
+	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "All tests passed successfully.\n");
 	return 0;
 }
 
-SHELL_STATIC_SUBCMD_SET_CREATE(
-	commands,
-	SHELL_CMD_ARG(ldr, NULL, "Initialize the bringup test for LDR Module.", cmd_test_ldr, 1, 0),
-	SHELL_CMD_ARG(io, NULL, "Initialize the bringup test for IO Module.", cmd_test_io, 1, 0),
-	SHELL_CMD_ARG(pwm, NULL, "Initialize the bringup test for PWM Module.", cmd_test_pwm, 1, 0),
-	SHELL_CMD_ARG(addr_led, NULL, "Initialize the bringup test for Addressable LED Module.",
-		      cmd_test_addr_led, 1, 0),
-	SHELL_CMD_ARG(display, NULL, "Initialize the bringup test for Display Module.",
-		      cmd_test_display, 1, 0),
-	SHELL_CMD_ARG(ir_io, NULL, "Initialize the bringup test for IR IO Module.", cmd_test_ir_io,
-		      1, 0),
-	SHELL_CMD_ARG(all, NULL, "Initialize the bringup test for all Modules.", cmd_test_all, 1,
-		      0),
-	SHELL_CMD_ARG(sd, NULL, "Initialize the bringup test for SD Card Module.", cmd_test_sd, 1,
-		      0),
-	SHELL_SUBCMD_SET_END /* Array terminated. */
-);
+SHELL_SUBCMD_ADD((test), all, NULL, "Run every bringup test available on this revision.",
+		 cmd_test_all, 1, 0);
 
-SHELL_CMD_REGISTER(test, &commands, "Test bringup of Zbook", NULL);
-
-static void list_available_tests(void)
-{
-	printk("Available tests:\n");
-	printk("  test ldr\n");
-	printk("  test io\n");
-	printk("  test pwm\n");
-	printk("  test addr_led\n");
-	printk("  test display\n");
-	printk("  test ir_io\n");
-	printk("  test sd\n");
-	printk("  test all\n");
-}
+SHELL_CMD_REGISTER(test, &test_subcmds, "Test bringup of Zbook", NULL);
 
 int main(void)
 {
@@ -107,7 +96,9 @@ int main(void)
 		return 0;
 	}
 
-	list_available_tests();
+	printk("ZBook bring-up firmware\n");
+	printk("Board: %s\n", CONFIG_BOARD_TARGET);
+	printk("Run `test -h` for the tests available on this revision.\n");
 
 	while (!dtr) {
 		uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);

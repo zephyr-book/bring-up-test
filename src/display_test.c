@@ -1,34 +1,25 @@
 /**
- * @file io_test.c
- * @author Gabriel Germano (gabriel.germano@edge.ufal.br)
- * @brief
- * @version 0.1
+ * @file display_test.c
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief OLED bring-up test.
+ *
+ * @version 0.2
  * @date 29-01-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
-#include "display.h"
 #include "display_test.h"
 
-#include "fonts.h"
-#include "zephyr/devicetree.h"
-#include <stdio.h>
-#include <string.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/uart.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/ring_buffer.h>
 #include <zephyr/shell/shell.h>
 
-#define SLEEP_TIME_MS 10
-
-static const struct gpio_dt_spec display_reset =
-	GPIO_DT_SPEC_GET(DT_NODELABEL(display_reset), gpios);
-
-static const struct gpio_dt_spec display_en = GPIO_DT_SPEC_GET(DT_NODELABEL(display_en), gpios);
+#define ZBOOK_BITMAP_W      100
+#define ZBOOK_BITMAP_H      50
+/* Row-major, MSB-first, one bit per pixel. */
+#define ZBOOK_BITMAP_STRIDE ((ZBOOK_BITMAP_W + 7) / 8)
 
 static const unsigned char zbook_bitmap[] = {
 	// 'Gemini_Generated_Image_mh1mqmh1mqmh1mqm, 100x50px
@@ -77,6 +68,154 @@ static const unsigned char zbook_bitmap[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00};
 
+#if DT_HAS_CHOSEN(zephyr_display)
+/* ---------------------------------------------------------------- P2 (I2C) */
+
+#include <zephyr/display/cfb.h>
+#include <zephyr/drivers/display.h>
+
+static const struct device *const display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
+
+static inline bool bitmap_pixel(uint16_t x, uint16_t y)
+{
+	size_t bit = (size_t)y * ZBOOK_BITMAP_STRIDE * 8 + x;
+	size_t byte = bit / 8;
+
+	if (byte >= ARRAY_SIZE(zbook_bitmap)) {
+		return false;
+	}
+
+	return (zbook_bitmap[byte] >> (7 - (bit % 8))) & 0x01;
+}
+
+static int narrowest_font(const struct device *dev)
+{
+	int count = cfb_get_numof_fonts(dev);
+	int best = -ENOENT;
+	uint8_t best_width = UINT8_MAX;
+
+	for (int i = 0; i < count; i++) {
+		uint8_t w, h;
+
+		if (cfb_get_font_size(dev, i, &w, &h) != 0) {
+			continue;
+		}
+
+		if (w > 0 && w < best_width) {
+			best_width = w;
+			best = i;
+		}
+	}
+
+	return best;
+}
+
+static int display_run(const struct shell *sh)
+{
+	int ret;
+	int font;
+
+	if (!device_is_ready(display_dev)) {
+		shell_error(sh, "Display device %s not ready", display_dev->name);
+		return -ENODEV;
+	}
+
+	ret = display_blanking_off(display_dev);
+	if (ret < 0) {
+		shell_error(sh, "Failed to turn blanking off: %d", ret);
+		return ret;
+	}
+
+	ret = cfb_framebuffer_init(display_dev);
+	if (ret < 0) {
+		shell_error(sh, "Framebuffer init failed: %d", ret);
+		return ret;
+	}
+
+	font = narrowest_font(display_dev);
+	if (font < 0) {
+		shell_error(sh, "No CFB font available: %d", font);
+		return font;
+	}
+
+	ret = cfb_framebuffer_set_font(display_dev, (uint8_t)font);
+	if (ret < 0) {
+		shell_error(sh, "Failed to select font %d: %d", font, ret);
+		return ret;
+	}
+
+	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "Display %s initialized\n",
+		      display_dev->name);
+
+	/* Frame 1: concentric circles with a caption, mirroring the P1 test. */
+	(void)cfb_framebuffer_clear(display_dev, false);
+
+	const struct cfb_position centre = {.x = 64, .y = 32};
+
+	for (uint16_t r = 28; r <= 30; r++) {
+		ret = cfb_draw_circle(display_dev, &centre, r);
+		if (ret < 0) {
+			shell_error(sh, "Circle draw failed: %d", ret);
+			return ret;
+		}
+	}
+
+	ret = cfb_print(display_dev, "ZBook P2", 0, 0);
+	if (ret < 0) {
+		shell_error(sh, "Text draw failed: %d", ret);
+		return ret;
+	}
+
+	ret = cfb_framebuffer_finalize(display_dev);
+	if (ret < 0) {
+		shell_error(sh, "Framebuffer flush failed: %d", ret);
+		return ret;
+	}
+
+	k_msleep(5000);
+
+	(void)cfb_framebuffer_clear(display_dev, false);
+
+	for (uint16_t y = 0; y < ZBOOK_BITMAP_H; y++) {
+		for (uint16_t x = 0; x < ZBOOK_BITMAP_W; x++) {
+			if (!bitmap_pixel(x, y)) {
+				continue;
+			}
+
+			const struct cfb_position p = {.x = (uint16_t)(x + 12),
+						       .y = (uint16_t)(y + 7)};
+
+			(void)cfb_draw_point(display_dev, &p);
+		}
+	}
+
+	ret = cfb_framebuffer_finalize(display_dev);
+	if (ret < 0) {
+		shell_error(sh, "Framebuffer flush failed: %d", ret);
+		return ret;
+	}
+
+	k_msleep(5000);
+
+	(void)cfb_framebuffer_clear(display_dev, true);
+	(void)cfb_framebuffer_finalize(display_dev);
+	(void)display_blanking_on(display_dev);
+
+	return 0;
+}
+
+#else
+
+#include "display.h"
+#include "fonts.h"
+
+#include <zephyr/drivers/gpio.h>
+
+static const struct gpio_dt_spec display_reset =
+	GPIO_DT_SPEC_GET(DT_NODELABEL(display_reset), gpios);
+
+static const struct gpio_dt_spec display_en = GPIO_DT_SPEC_GET(DT_NODELABEL(display_en), gpios);
+
 static int init_pins(const struct shell *sh)
 {
 	int ret = gpio_pin_configure_dt(&display_reset, GPIO_OUTPUT_ACTIVE);
@@ -124,45 +263,35 @@ static void display_clear_and_flush(void)
 	}
 }
 
-int cmd_test_display(const struct shell *sh, size_t argc, char **argv)
+static int display_run(const struct shell *sh)
 {
 	int ret;
+
 	display_init();
 
 	ret = init_pins(sh);
 	if (ret < 0) {
-		shell_fprintf_impl(sh, SHELL_VT100_COLOR_RED, "pin initialization failed");
+		shell_fprintf(sh, SHELL_VT100_COLOR_RED, "pin initialization failed");
 		return ret;
 	}
 
-	shell_fprintf_impl(sh, SHELL_VT100_COLOR_GREEN, "Pins initialized successfully\n");
+	shell_fprintf(sh, SHELL_VT100_COLOR_GREEN, "Pins initialized successfully\n");
 
 	display_enable();
-
 	display_clear();
-
 	display_set_draw_mode(DISPLAY_PIXEL_WHITE);
-
 	display_draw_circle(64, 32, 30);
-
 	display_draw_circle(64, 32, 29);
-
 	display_draw_circle(64, 32, 28);
-
 	display_set_draw_mode(DISPLAY_PIXEL_INVERT);
-
 	display_print("Hello, World!", 27, 19, FONT_SIZE_10, 1);
-
 	display_set_draw_mode(DISPLAY_PIXEL_WHITE);
-
 	display_flush();
 
 	k_msleep(5000);
 
 	display_clear();
-
-	display_draw_bitmap(zbook_bitmap, 12, 7, 100, 50, 1);
-
+	display_draw_bitmap(zbook_bitmap, 12, 7, ZBOOK_BITMAP_W, ZBOOK_BITMAP_H, 1);
 	display_flush();
 
 	k_msleep(5000);
@@ -171,3 +300,16 @@ int cmd_test_display(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+#endif /* DT_HAS_CHOSEN(zephyr_display) */
+
+int cmd_test_display(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	return display_run(sh);
+}
+
+SHELL_SUBCMD_ADD((test), display, NULL, "Initialize the bringup test for Display Module.",
+		 cmd_test_display, 1, 0);
