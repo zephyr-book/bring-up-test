@@ -1,11 +1,12 @@
 /**
  * @file ldr_test.c
- * @author Gabriel Germano (gabriel.germano@edge.ufal.br)
- * @brief
+ * @author Gabriel Germano <gabriel.germano@edge.ufal.br>
+ * @brief LDR light sensor bring-up test.
+ *
  * @version 0.1
  * @date 29-01-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
 #include "ldr_test.h"
@@ -116,3 +117,5 @@ int cmd_test_ldr(const struct shell *sh, size_t argc, char **argv)
 
 	return 0;
 }
+
+SHELL_SUBCMD_ADD((test), ldr, NULL, "Initialize the bringup test for LDR Module.", cmd_test_ldr, 1, 0);

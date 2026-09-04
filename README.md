@@ -14,18 +14,46 @@ pulled in by `west.yml` — so the app does not hardcode `BOARD_ROOT`.
 
 The shell root command is `test`. Run `test <module>`:
 
-| Shell command   | Module                                                     |
-|-----------------|------------------------------------------------------------|
-| `test ldr`      | LDR light sensor via ADC                                   |
-| `test io`       | GPIOs — RGB LEDs and buttons                               |
-| `test pwm`      | PWM — buzzer with frequency driven by a potentiometer      |
-| `test addr_led` | WS2812 addressable LED via PIO                             |
-| `test display`  | SH1106 OLED display over 3-wire SPI                        |
-| `test ir_io`    | IR emitter and receiver                                    |
-| `test sd`       | SD card over SPI (FAT32)                                   |
-| `test all`      | Runs `ldr → io → pwm → addr_led → ir_io` in sequence       |
+Available on **both revisions**:
 
-> `test all` intentionally skips `display` and `sd` (they are interactive / blocking).
+| Shell command   | Module                                                      |
+|-----------------|-------------------------------------------------------------|
+| `test ldr`      | LDR light sensor via ADC                                    |
+| `test io`       | GPIOs — indicator LEDs and buttons (plus the white LED on P2)|
+| `test pwm`      | PWM — buzzer with frequency driven by a potentiometer       |
+| `test addr_led` | WS2812 addressable LEDs via PIO (1 pixel on P1, 4 on P2)    |
+| `test display`  | SH1106 OLED — 3-wire SPI on P1, i2c0 on P2                  |
+| `test ir_io`    | IR emitter and receiver                                     |
+| `test sd`       | SD card over SPI (FAT32)                                    |
+| `test motor`    | MOSFET PWM output — DC motor on P2, generic MOSFET on P1    |
+| `test all`      | Runs every test available on the revision being built       |
+
+**P2 only** — these subcommands do not exist in a P1 build, because the
+devicetree nodes they need are not there:
+
+| Shell command   | Module                                                      |
+|-----------------|-------------------------------------------------------------|
+| `test temp`     | TMP1075 temperature sensor on i2c0                          |
+| `test accel`    | BMI323 6-axis IMU on spi1                                   |
+| `test hall`     | TMAG5213 hall sensor (digital output)                       |
+| `test encoder`  | PEC12R rotary encoder (gpio-qdec) + push-switch             |
+| `test mic`      | Electret microphone via ADC (peak-to-peak per window)       |
+
+Run `test -h` on the target to see what the running image actually has.
+
+### Writing a new test
+
+Each test lives in its own `src/<name>_test.c` and registers its own
+subcommand from that file:
+
+```c
+SHELL_SUBCMD_ADD((test), mytest, NULL, "help text", cmd_test_mytest, 1, 0);
+```
+
+Wrap the file body in `#if DT_NODE_EXISTS(...)` to make it revision-specific.
+Registration has to happen per-file rather than from one array in `main.c`,
+because a preprocessor conditional cannot legally appear inside a macro
+argument list.
 
 ---
 
@@ -101,6 +129,39 @@ Notes:
   partition. Use it *instead of* `-S wifi-credentials` (the two select mutually
   exclusive settings backends). It relies on the `littlefs` module, which is
   already in this app's `west.yml` import allowlist.
+
+### Hardware revisions
+
+Two hardware revisions exist, selected with `@<revision>` on the board target.
+**`p1` is the default** — a bare `zbook/rp2350b/m33` builds P1, so P2 hardware
+needs the suffix spelled out:
+
+```bash
+west build -p always -b zbook/rp2350b/m33            # P1 (default)
+west build -p always -b "zbook@p2/rp2350b/m33"       # P2
+```
+
+> The default comes from `boards/zbook/revision.cmake`, not from the `default:`
+> key in `board.yml`: with `format: custom` Zephyr includes `revision.cmake` and
+> ignores that key. To make P2 the default, change `revision.cmake`.
+
+`p1` is the original pinout. `p2` re-pins almost every peripheral and adds the
+hall sensor, TMP1075 temperature sensor, PEC12R rotary encoder, DC motor
+driver, a second (white) LED, a 4-LED addressable strip and an onboard Wi-Fi
+header, and moves the OLED from bit-bang SPI to i2c0. P2 also carries an
+onboard RP2040 used purely as a debug probe (SWD + UART bridge); it is not a
+Zephyr build target.
+
+| Target                         | Layout                                               |
+|--------------------------------|------------------------------------------------------|
+| `zbook/rp2350b/m33`            | Standalone, `storage` partition, P1 (default)        |
+| `zbook@p2/rp2350b/m33`         | Same layout, P2 hardware                             |
+| `zbook/rp2350b/m33/mcuboot`    | MCUboot layout, app in slot-0, P1                    |
+| `zbook@p2/rp2350b/m33/mcuboot` | MCUboot layout, app in slot-0, P2                    |
+
+The `zbook_wifi` shield works on both revisions; on P2 it drives the onboard
+Wi-Fi header's `WIFI_NRST`/`WIFI_EN` pins (see
+`zbook/boards/shields/zbook_wifi/boards/`).
 
 ### Board variants and flash layout
 

@@ -1,11 +1,12 @@
 /**
- * @file led_strip_test.c
- * @author Vinicius Ramos (vinicius.ramos@edge.ufal.br)
- * @brief
+ * @file addr_led_test.c
+ * @author Vinicius Ramos <vinicius.ramos@edge.ufal.br>
+ * @brief WS2812 addressable LED bring-up test.
+ *
  * @version 0.1
  * @date 23-02-2026
  *
- * @copyright Copyright (c) 2026
+ * @copyright Copyright (c) 2026 - Centro de Inovação EDGE
  *
  */
 #include "addr_led_test.h"
@@ -46,9 +47,9 @@ static struct led_rgb pixels[STRIP_NUM_PIXELS];
 
 static const struct device *const led_strip = DEVICE_DT_GET(DT_ALIAS(led_strip));
 
-static const struct gpio_dt_spec up_button = GPIO_DT_SPEC_GET(DT_NODELABEL(button1), gpios);
-static const struct gpio_dt_spec down_button = GPIO_DT_SPEC_GET(DT_NODELABEL(button4), gpios);
-static const struct gpio_dt_spec right_button = GPIO_DT_SPEC_GET(DT_NODELABEL(button2), gpios);
+static const struct gpio_dt_spec up_button = GPIO_DT_SPEC_GET(DT_ALIAS(button0), gpios);
+static const struct gpio_dt_spec down_button = GPIO_DT_SPEC_GET(DT_ALIAS(button3), gpios);
+static const struct gpio_dt_spec right_button = GPIO_DT_SPEC_GET(DT_ALIAS(button1), gpios);
 
 static int init_buttons(const struct shell *sh)
 {
@@ -180,3 +181,5 @@ int cmd_test_addr_led(const struct shell *sh, size_t argc, char **argv)
         return -1;
     }
 }
+
+SHELL_SUBCMD_ADD((test), addr_led, NULL, "Initialize the bringup test for Addressable LED Module.", cmd_test_addr_led, 1, 0);
