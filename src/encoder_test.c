@@ -28,9 +28,6 @@
 static const struct device *const qdec_dev = DEVICE_DT_GET(QDEC_NODE);
 static const struct gpio_dt_spec enc_button = GPIO_DT_SPEC_GET(DT_ALIAS(enc_button), gpios);
 
-/* Written from the input callback (a work-queue/thread context) and read by the
- * shell command, so both sides go through atomics rather than a plain int.
- */
 static atomic_t enc_position;
 static atomic_t enc_events;
 

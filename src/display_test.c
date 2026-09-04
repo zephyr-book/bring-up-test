@@ -69,7 +69,6 @@ static const unsigned char zbook_bitmap[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00};
 
 #if DT_HAS_CHOSEN(zephyr_display)
-/* ---------------------------------------------------------------- P2 (I2C) */
 
 #include <zephyr/display/cfb.h>
 #include <zephyr/drivers/display.h>

@@ -15,10 +15,6 @@
 #include "ldr_test.h"
 #include "pwm_test.h"
 
-/* P2-only tests. The headers always declare their handler; the definition is
- * compiled only when the matching devicetree node exists, and `test all` guards
- * each call the same way, so nothing references a missing symbol on P1.
- */
 #include "accel_test.h"
 #include "encoder_test.h"
 #include "hall_test.h"
@@ -34,11 +30,6 @@
 
 SHELL_SUBCMD_SET_CREATE(test_subcmds, (test));
 
-/* `test all` runs the suite in sequence. Unlike the individual subcommands this
- * has to name every handler from one place, so the revision-specific entries
- * are bracketed here as well -- these are statements, not macro arguments, so a
- * plain #if is fine.
- */
 static int cmd_test_all(const struct shell *sh, size_t argc, char **argv)
 {
 	int ret;
