@@ -23,7 +23,7 @@ Available on **both revisions**:
 | `test pwm`      | PWM — buzzer with frequency driven by a potentiometer       |
 | `test addr_led` | WS2812 addressable LEDs via PIO (1 pixel on P1, 4 on P2)    |
 | `test display`  | SH1106 OLED — 3-wire SPI on P1, i2c0 on P2                  |
-| `test ir_io`    | IR emitter and receiver                                     |
+| `test ir_io`    | IR emitter and receiver (manual loopback; `send`/`recv` verify two boards, see below) |
 | `test sd`       | SD card over SPI (FAT32)                                    |
 | `test motor`    | MOSFET PWM output — DC motor on P2, generic MOSFET on P1    |
 | `test all`      | Runs every test available on the revision being built       |
@@ -40,6 +40,24 @@ devicetree nodes they need are not there:
 | `test mic`      | Electret microphone via ADC (peak-to-peak per window)       |
 
 Run `test -h` on the target to see what the running image actually has.
+
+### Verifying IR between two boards
+
+`test ir_io` on its own is a manual loopback (toggle the emitter with a
+button, watch the receiver mirror it on an LED) — it can't tell you whether
+one board's emitter can actually reach *another* board's receiver. For that,
+flash the same image to two ZBook units and run one subcommand on each:
+
+```text
+Board A: test ir_io recv        # listens for 0xA5 for 15s
+Board B: test ir_io send        # transmits 0xA5 repeatedly for 15s
+```
+
+Point board B's IR emitter at board A's receiver a few cm apart. Board A
+prints `PASS` as soon as it decodes a matching frame, or `FAIL` after the 15s
+window if nothing valid came through. Both subcommands take an optional byte
+argument (`test ir_io send 0x42`, `test ir_io recv 0x42`) if you want to rule
+out a value that happens to work by coincidence.
 
 ### Writing a new test
 
