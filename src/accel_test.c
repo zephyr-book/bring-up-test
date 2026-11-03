@@ -30,10 +30,17 @@ static const struct device *const accel_dev = DEVICE_DT_GET(ACCEL_NODE);
 static int enable_channel(const struct shell *sh, enum sensor_channel chan, const char *name)
 {
 	struct sensor_value odr = {.val1 = ODR_HZ, .val2 = 0};
+	struct sensor_value enable = {.val1 = 1, .val2 = 0};
 	int ret = sensor_attr_set(accel_dev, chan, SENSOR_ATTR_SAMPLING_FREQUENCY, &odr);
 
 	if (ret < 0) {
 		shell_error(sh, "Failed to set %s ODR: %d", name, ret);
+		return ret;
+	}
+
+	ret = sensor_attr_set(accel_dev, chan, SENSOR_ATTR_FEATURE_MASK, &enable);
+	if (ret < 0) {
+		shell_error(sh, "Failed to enable %s: %d", name, ret);
 		return ret;
 	}
 
